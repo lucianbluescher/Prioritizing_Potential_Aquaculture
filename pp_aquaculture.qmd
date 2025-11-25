@@ -1,0 +1,188 @@
+---
+title: "Prioritizing Potential Aquaculture"
+format: html
+author: Lucian Scher
+data: 11/24/25
+subtitle: EDS 223 Homework 4
+editor_options: 
+  chunk_output_type: inline
+---
+
+# Load packages
+
+```{r, message=FALSE}
+library(terra, quiet = TRUE) # Raster data
+library(tmap)
+library(sf, quiet = TRUE)
+library(testthat, quiet = TRUE) # For testing code chunks
+library(rnaturalearth) # For adding land to our eez map
+
+```
+
+# Prepare data
+
+Load all necessary data and make sure it has the coordinate reference system.
+
+```{r}
+# Bathymetry Data
+depth <- rast("data/depth.tif")
+
+# Exclusive Economic Zones (eez)
+eez <- st_read("data/wc_regions_clean.shp", quiet = TRUE)
+
+# Sea Surface Temperature (sst) 2008-2012
+
+sst <- c(rast("data/average_annual_sst_2012.tif"),
+         rast("data/average_annual_sst_2011.tif"),
+         rast("data/average_annual_sst_2010.tif"),
+         rast("data/average_annual_sst_2009.tif"),
+         rast("data/average_annual_sst_2008.tif"))
+
+# Check if CRS match before moving on 
+
+if (crs(eez) == crs(sst) && crs(sst) == crs(depth)) {
+  message("The CRS of this data match!")
+} else {
+  warning("CRS do NOT match. Transforming to match the CRS of SST")
+    # Transform eez CRS
+  if (crs(eez) != crs(sst)) {
+    eez <- st_transform(eez, crs(sst))
+  }
+  # Transform depth CRS
+  if (crs(depth) != crs(sst)) {
+    depth <- project(depth, sst)
+  }
+  message("All CRS now match the SST CRS.")
+}
+
+```
+
+# Process data
+
+Next, we need to process the SST and depth data so that they can be combined. In this case the SST and depth data have slightly different resolutions, extents, and positions.
+
+```{r}
+# Find the mean SST from 2008-2012 
+mean_sst <- mean(sst)
+
+# Convert mean SST from Kelvin to Celsius
+mean_sst <- (mean_sst - 273.15)
+
+# Crop depth raster to match extent of SST Raster
+depth_cropped <- crop(depth, mean_sst) 
+
+# Resample depth data to match SST data using the nearest neighbor approach
+depth_resampled <- resample(depth_cropped, mean_sst, method = "near")
+
+# Test that depth and sst match in crs, resolution and extent
+test_that("Depth and SST rasters are aligned", {
+  expect_no_error({
+    x <- c(depth_resampled, mean_sst)
+  })})
+
+# Combine sst and depth rasters
+sst_depth <- c(mean_sst, depth_resampled)
+```
+
+# Finding Suitable Locations
+
+To find suitable locations for marine aquaculture, we’ll need to find locations that are suitable in terms of both SST and depth.
+
+```{r}
+# First we need to make a reclassifcation matrix for both
+# SST reclassification matrix
+sst_rcl <- matrix(c(
+  -Inf, 11,    0,
+   11,  30,    1,
+   30, Inf,    0
+), ncol = 3, byrow = TRUE)
+
+# Depth reclassification matrix
+depth_rcl <- matrix(c(
+  -Inf, -70,   0,
+   -70,   0,   1,
+     0, Inf,   0
+), ncol = 3, byrow = TRUE)
+
+# Reclassify both sst and depth to 0/1 where 1 is suitable
+sst_bin   <- classify(mean_sst, rcl = sst_rcl)
+depth_bin <- classify(depth_resampled, rcl = depth_rcl)
+
+# Replicate depth layer to match sst layers
+depth_stack <- rep(depth_bin, nlyr(sst_bin))
+
+# Identify suitability using lapp() by multiplying sst and depth to get values equalling 1
+suitable_cells <- lapp(c(sst_bin, depth_stack), fun = function(sst, depth) {
+  sst * depth
+})
+
+# Clean up environment
+rm(depth_cropped, sst_rcl, depth_rcl, sst_bin, depth_bin, depth_stack)
+```
+
+# Determine the most suitable EEZ
+
+We want to determine the total suitable area within each EEZ in order to rank zones by priority. To do so, we need to find the total area of suitable locations within each EEZ.
+
+```{r}
+# Make sure CRS match
+eez <- st_transform(eez, crs(suitable_cells))
+
+# Mask suitability raster to EEZ
+suitable_masked <- mask(suitable_cells, vect(eez))
+
+# Rasterize EEZ polygons using region names
+eez_rast <- rasterize(vect(eez), suitable_masked[[1]], field = "rgn")
+
+# Compute cell area in km2
+cell_area <- cellSize(suitable_masked, unit = "km")
+
+# Multiply suitability by cell area
+suitable_area_rast <- suitable_masked * cell_area
+
+# Sum total suitable area per EEZ
+total_area_per_eez <- zonal(suitable_area_rast, eez_rast, fun = "sum", na.rm = TRUE)
+
+# Rename columns
+colnames(total_area_per_eez) <- c("Region", "Suitable Area (km2)")
+
+# Rank EEZs by largest suitable area
+ranked_eez <- total_area_per_eez[order(-total_area_per_eez$"Suitable Area (km2)"), ]
+
+# Round to 1 decimal
+ranked_eez$"Suitable Area (km2)" <- round(ranked_eez$"Suitable Area (km2)", 1)
+
+# Show table
+ranked_eez
+
+```
+
+# Create map of suitable EEZ regions
+
+```{r, warning = FALSE, message = FALSE}
+# Species name
+species_name <- "Oysters"
+
+# Add total suitable area to EEZ polygons
+eez$TotalSuitableArea_km2 <- setNames(ranked_eez$TotalSuitableArea_km2, ranked_eez$Region)[eez$rgn]
+
+# Load land polygons
+land <- ne_countries(scale = "medium", returnclass = "sf")
+land_wc <- land[land$admin %in% c("United States of America", "Canada"), ]
+land_wc <- st_crop(land_wc, xmin = -130, xmax = -115, ymin = 30, ymax = 50)
+
+# Create map
+tm_shape(land_wc) +
+  tm_polygons(fill = "lightgray", col = "black", lwd = 1) +
+tm_shape(eez) + # Add Exclusive Economic Zones
+  tm_polygons(fill = "TotalSuitableArea_km2", 
+              fill.scale = tm_scale_continuous(values = "brewer.yl_or_rd"),
+              fill.legend = tm_legend(title = "Suitable Area (km²)"),
+              col = "black",  # Adjust land borders   
+              lwd = 0.5) +
+tm_title(text = paste("Suitable Habitat for", species_name)) +
+tm_layout(
+  legend.outside = TRUE,
+  legend.outside.position = "right"
+)
+```
