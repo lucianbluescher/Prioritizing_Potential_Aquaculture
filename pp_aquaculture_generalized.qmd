@@ -65,7 +65,6 @@ Next, we need to process the SST and depth data so that they can be combined. In
 # Calculate mean of sst for each year and convert to Celsius
 mean_sst <- mean(sst) - 273.15
 
-
 # Crop to extent of sst and resample to match sst
 depth_resampled <- depth |> 
   crop(mean_sst) |> 
@@ -78,98 +77,6 @@ test_that("Depth and SST rasters are aligned", {
   })})
 ```
 
-# Finding Suitable Locations
-
-To find suitable locations for marine aquaculture, we’ll need to find locations that are suitable in terms of both SST and depth.
-
-```{r}
-# First we need to make a reclassifcation matrix for both
-# SST reclassification matrix
-sst_rcl <- matrix(c(
-  -Inf, 11,    0,
-   11,  30,    1,
-   30, Inf,    0
-), ncol = 3, byrow = TRUE)
-
-# Depth reclassification matrix
-depth_rcl <- matrix(c(
-  -Inf, -70,   0,
-   -70,   0,   1,
-     0, Inf,   0
-), ncol = 3, byrow = TRUE)
-
-# Reclassify both sst and depth to 0/1 where 1 is suitable
-sst_bin   <- classify(mean_sst, rcl = sst_rcl)
-depth_bin <- classify(depth_resampled, rcl = depth_rcl)
-
-# Replicate depth layer to match sst layers
-depth_stack <- rep(depth_bin, nlyr(sst_bin))
-
-# Identify suitability using lapp() by multiplying sst and depth to get values equalling 1
-suitable_cells <- lapp(c(sst_bin, depth_stack), fun = function(sst, depth) {
-  sst * depth
-})
-
-# Determine the most suitable EEZ
-
-#We want to determine the total suitable area within each EEZ in order to rank zones by priority. To do so, we need to find the total area of suitable locations within each EEZ.
-
-# Make sure CRS match
-eez <- st_transform(eez, crs(suitable_cells))
-
-# Mask suitability raster to EEZ
-suitable_masked <- mask(suitable_cells, vect(eez))
-
-# Rasterize EEZ polygons using region names
-eez_rast <- rasterize(vect(eez), suitable_masked[[1]], field = "rgn")
-
-# Compute cell area in km2
-cell_area <- cellSize(suitable_masked, unit = "km")
-
-# Multiply suitability by cell area
-suitable_area_rast <- suitable_masked * cell_area
-
-# Sum total suitable area per EEZ
-total_area_per_eez <- zonal(suitable_area_rast, eez_rast, fun = "sum", na.rm = TRUE)
-
-# Rename columns
-colnames(total_area_per_eez) <- c("Region", "Suitable Area (km2)")
-
-# Rank EEZs by largest suitable area
-ranked_eez <- total_area_per_eez[order(-total_area_per_eez$"Suitable Area (km2)"), ]
-
-# Round to 1 decimal
-ranked_eez$"Suitable Area (km2)" <- round(ranked_eez$"Suitable Area (km2)", 1)
-
-# Show table
-ranked_eez
-
-# Species name
-species_name <- "Oysters"
-
-# Add total suitable area to EEZ polygons
-eez$"Suitable Area (km2)" <- setNames(ranked_eez$"Suitable Area (km2)", ranked_eez$Region)[eez$rgn]
-
-# Load land polygons
-land <- ne_countries(scale = "medium", returnclass = "sf")
-land_wc <- land[land$admin %in% c("United States of America", "Canada"), ]
-land_wc <- st_crop(land_wc, xmin = -130, xmax = -115, ymin = 30, ymax = 50)
-
-# Create map
-tm_shape(land_wc) +
-  tm_polygons(fill = "lightgray", col = "black", lwd = 1) +
-tm_shape(eez) + # Add Exclusive Economic Zones
-  tm_polygons(fill = "Suitable Area (km2)", 
-              fill.scale = tm_scale_continuous(values = "brewer.yl_or_rd"),
-              fill.legend = tm_legend(title = "Suitable Area (km²)"),
-              col = "black",  # Adjust land borders   
-              lwd = 0.5) +
-tm_title(text = paste("Suitable Habitat for", species_name)) +
-tm_layout(
-  legend.outside = TRUE,
-  legend.outside.position = "right"
-)
-```
 ```{r}
 map_species_suitability <- function(species_name, 
                                      sst_min, sst_max, 
@@ -246,8 +153,12 @@ map_species_suitability <- function(species_name,
   return(invisible(map))
 }
 
-# Example usage:
- map_species_suitability("Oysters", sst_min = 11, sst_max = 30, depth_min = -70, depth_max = 0)
 
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+# Running our function for Oysters
+map_species_suitability("Oysters", sst_min = 11, sst_max = 30, depth_min = -70, depth_max = 0)
 ```
 
