@@ -1,8 +1,8 @@
 ---
 title: "Prioritizing Potential Aquaculture"
-format: html
+format: pdf
 author: Lucian Scher
-data: 11/24/25
+date: 11/26/25
 subtitle: EDS 223 Homework 4
 editor_options: 
   chunk_output_type: inline
@@ -12,7 +12,7 @@ editor_options:
 
 ```{r, message=FALSE}
 library(terra, quiet = TRUE) # Raster data
-library(tmap)
+library(tmap) # Creating Maps
 library(sf, quiet = TRUE)
 library(testthat, quiet = TRUE) # For testing code chunks
 library(rnaturalearth) # For adding land to our eez map
@@ -21,7 +21,7 @@ library(rnaturalearth) # For adding land to our eez map
 
 # Prepare data
 
-Load all necessary data and make sure it has the coordinate reference system.
+First we load all necessary data and make sure it has the coordinate reference system.
 
 ```{r}
 # Bathymetry Data
@@ -77,7 +77,25 @@ test_that("Depth and SST rasters are aligned", {
   })})
 ```
 
+# Prioritizing Potential Aquaculture Function
+
+The purpose of this function is to take parameters of certain potential aquaculture marine species and visualize the best West Coast Exclusive Economic Zone for their farming.
+
 ```{r}
+#' @title Mapping Potential Aquaculture for species in West Coast Exclusive Economic Zones
+#' @author Lucian Scher
+#' @param species_name Name of species (Scientific or Common)
+#' @param sst_min Minimum of temperature range (Degrees Celsius)
+#' @param sst_max Maximum of temperature range (Degrees Celsius)
+#' @param depth_min Minimum of depth range negative for underwater (Meters)
+#' @param depth_max Maximum of depth range 0 for sea-level (Meters)
+#' *Optional Parameters:* to update SST, depth or EEZ data in case of changes: Default is data used this repository. Will need to re-prepare and re-process if neccessary to change these.
+#' @param sst_data Sea Surface Temperature Data
+#' @param depth_data Bathymetry data
+#' @param eez_data Exclusive Economic Zones
+#'
+#' @returns Map of EEZ regions colored by amount of suitable area for given species (species name included in map title)
+
 map_species_suitability <- function(species_name, 
                                      sst_min, sst_max, 
                                      depth_min, depth_max,
@@ -85,6 +103,8 @@ map_species_suitability <- function(species_name,
                                      depth_data = depth_resampled,
                                      eez_data = eez) {
   
+# --- Finding Suitable Locations --- #
+
   # Create reclassification matrices
   sst_rcl <- matrix(c(
     -Inf, sst_min, 0,
@@ -110,6 +130,8 @@ map_species_suitability <- function(species_name,
     sst * depth
   })
   
+# --- Determine the most suitable EEZ ---  #
+
   # Match CRS
   eez_data <- st_transform(eez_data, crs(suitable_cells))
   
@@ -126,6 +148,8 @@ map_species_suitability <- function(species_name,
   ranked_eez <- total_area_per_eez[order(-total_area_per_eez$"Suitable Area (km2)"), ]
   ranked_eez$"Suitable Area (km2)" <- round(ranked_eez$"Suitable Area (km2)", 1)
   
+  # --- Create map of suitable EEZ regions --- #
+  
   # Add suitable area to EEZ polygons
   eez_data$"Suitable Area (km2)" <- setNames(ranked_eez$"Suitable Area (km2)", 
                                               ranked_eez$Region)[eez_data$rgn]
@@ -138,7 +162,7 @@ map_species_suitability <- function(species_name,
   land_cropped <- st_crop(land, eez_bbox)
   
   # Create and display map
-  map <- tm_shape(land_cropped) +
+ map <- tm_shape(land_cropped) +
     tm_polygons(fill = "lightgray", col = "black", lwd = 1) +
     tm_shape(eez_data) +
     tm_polygons(fill = "Suitable Area (km2)", 
@@ -146,19 +170,49 @@ map_species_suitability <- function(species_name,
                 fill.legend = tm_legend(title = "Suitable Area (km²)"),
                 col = "black",
                 lwd = 0.5) +
-    tm_title(text = paste("Suitable Habitat for", species_name)) +
+    tm_text("rgn", size = 0.4, col = "black", fontface = "bold", 
+            remove.overlap = TRUE, auto.placement = TRUE) +
+    tm_title(text = paste("Most Suitable EEZ for", species_name), 
+             size = 0.7, fontface = "bold") +
+    tm_scalebar(position = c("left", "bottom")) +
+    tm_compass(position = c("right", "top")) +
     tm_layout(legend.outside = TRUE, legend.outside.position = "right")
   
+ # Clean Environment After running Function
+ rm(sst_rcl, depth_rcl, sst_bin, depth_bin, depth_stack, suitable_cells, eez_data, suitable_masked, eez_rast, cell_area, suitable_area_rast, total_area_per_eez, ranked_eez, land, eez_bbox, land_cropped)
+ 
   print(map)
   return(invisible(map))
 }
-
-
-
 ```
 
+# Most suitable EEZ for Oysters
+
 ```{r, warning=FALSE, message=FALSE}
-# Running our function for Oysters
+# Finding the most suitable EEZ habitats for Oysters
 map_species_suitability("Oysters", sst_min = 11, sst_max = 30, depth_min = -70, depth_max = 0)
 ```
 
+The most suitable Exclusive Economic Zone for Oysters generally is Central California.
+
+# Most suitable EEZ for Olympia oysters
+
+Data: <https://www.sealifebase.ca/summary/Ostrea-lurida.html>
+
+```{r, warning=FALSE, message=FALSE}
+# Finding the most suitable EEZ habitats for Olympia Oysters
+map_species_suitability("Olympia Oysters", sst_min = 10, sst_max = 12, depth_min = -71, depth_max = 0)
+```
+
+The most suitable Exclusive Economic Zone for Olympia Oysters is Washington.
+
+# Most suitable EEZ for Red Abalone
+
+Data: [https://www.sealifebase.ca/summary/Haliotis-rufescens.html](https://www.sealifebase.ca/summary/Haliotis-rufescens.html%5D)
+
+```{r, warning=FALSE, message=FALSE}
+# Finding the most suitable EEZ habitats for Red Abalone
+map_species_suitability("Red Abalone", sst_min = 8, sst_max = 18, depth_min = -24, depth_max = 0)
+```
+
+The most suitable Exclusive Economic Zone for Red Abalone is Washington.
