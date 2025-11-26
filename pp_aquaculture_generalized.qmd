@@ -62,17 +62,14 @@ if (crs(eez) == crs(sst) && crs(sst) == crs(depth)) {
 Next, we need to process the SST and depth data so that they can be combined. In this case the SST and depth data have slightly different resolutions, extents, and positions.
 
 ```{r}
-# Find the mean SST from 2008-2012 
-mean_sst <- mean(sst) 
+# Calculate mean of sst for each year and convert to Celsius
+mean_sst <- mean(sst) - 273.15
 
-# Convert mean SST from Kelvin to Celsius
-mean_sst <- (mean_sst - 273.15) 
 
-# Crop depth raster to match extent of SST Raster
-depth_cropped <- crop(depth, mean_sst) 
-
-# Resample depth data to match SST data using the nearest neighbor approach
-depth_resampled <- resample(depth_cropped, mean_sst, method = "near")
+# Crop to extent of sst and resample to match sst
+depth_resampled <- depth |> 
+  crop(mean_sst) |> 
+  resample(mean_sst, method = "near")
 
 # Test that depth and sst match in crs, resolution and extent
 test_that("Depth and SST rasters are aligned", {
@@ -113,15 +110,10 @@ suitable_cells <- lapp(c(sst_bin, depth_stack), fun = function(sst, depth) {
   sst * depth
 })
 
-# Clean up environment
-rm(depth_cropped, sst_rcl, depth_rcl, sst_bin, depth_bin, depth_stack)
-```
-
 # Determine the most suitable EEZ
 
-We want to determine the total suitable area within each EEZ in order to rank zones by priority. To do so, we need to find the total area of suitable locations within each EEZ.
+#We want to determine the total suitable area within each EEZ in order to rank zones by priority. To do so, we need to find the total area of suitable locations within each EEZ.
 
-```{r}
 # Make sure CRS match
 eez <- st_transform(eez, crs(suitable_cells))
 
@@ -152,11 +144,6 @@ ranked_eez$"Suitable Area (km2)" <- round(ranked_eez$"Suitable Area (km2)", 1)
 # Show table
 ranked_eez
 
-```
-
-# Create map of suitable EEZ regions
-
-```{r, warning = FALSE, message = FALSE}
 # Species name
 species_name <- "Oysters"
 
