@@ -8,6 +8,8 @@ editor_options:
   chunk_output_type: inline
 ---
 
+![](images/clipboard-3215522662.png)
+
 # Load packages
 
 ```{r, message=FALSE}
@@ -89,12 +91,15 @@ The purpose of this function is to take parameters of certain potential aquacult
 #' @param sst_max Maximum of temperature range (Degrees Celsius)
 #' @param depth_min Minimum of depth range negative for underwater (Meters)
 #' @param depth_max Maximum of depth range 0 for sea-level (Meters)
-#' *Optional Parameters:* to update SST, depth or EEZ data in case of changes: Default is data used this repository. Will need to re-prepare and re-process if neccessary to change these.
+#' *Optional Parameters:* to update SST, depth or EEZ data in case of changes: 
+#' Default is data used this repository. 
+#' Will need to re-prepare and re-process if neccessary to change these.
 #' @param sst_data Sea Surface Temperature Data
 #' @param depth_data Bathymetry data
 #' @param eez_data Exclusive Economic Zones
 #'
-#' @returns Map of EEZ regions colored by amount of suitable area for given species (species name included in map title)
+#' @returns Map of EEZ regions colored by amount of suitable area for given species 
+#' (species name included in map title)
 
 map_species_suitability <- function(species_name, 
                                      sst_min, sst_max, 
@@ -126,27 +131,36 @@ map_species_suitability <- function(species_name,
   depth_stack <- rep(depth_bin, nlyr(sst_bin))
   
   # Identify suitable cells
-  suitable_cells <- lapp(c(sst_bin, depth_stack), fun = function(sst, depth) {
+  suitable_cells <- lapp(c(sst_bin, 
+                           depth_stack), 
+                         fun = function(sst, depth) {
     sst * depth
   })
   
 # --- Determine the most suitable EEZ ---  #
 
   # Match CRS
-  eez_data <- st_transform(eez_data, crs(suitable_cells))
+  eez_data <- st_transform(eez_data, 
+                           crs(suitable_cells))
   
   # Mask to EEZ and rasterize
-  suitable_masked <- mask(suitable_cells, vect(eez_data))
-  eez_rast <- rasterize(vect(eez_data), suitable_masked[[1]], field = "rgn")
+  suitable_masked <- mask(suitable_cells, 
+                          vect(eez_data))
+  eez_rast <- rasterize(vect(eez_data), 
+                        suitable_masked[[1]], field = "rgn")
   
   # Calculate suitable area per EEZ
   cell_area <- cellSize(suitable_masked, unit = "km")
   suitable_area_rast <- suitable_masked * cell_area
-  total_area_per_eez <- zonal(suitable_area_rast, eez_rast, fun = "sum", na.rm = TRUE)
+  total_area_per_eez <- zonal(suitable_area_rast, 
+                              eez_rast, 
+                              fun = "sum", 
+                              na.rm = TRUE)
   
+  # Change Colnames for mapping
   colnames(total_area_per_eez) <- c("Region", "Suitable Area (km2)")
-  ranked_eez <- total_area_per_eez[order(-total_area_per_eez$"Suitable Area (km2)"), ]
-  ranked_eez$"Suitable Area (km2)" <- round(ranked_eez$"Suitable Area (km2)", 1)
+  ranked_eez <- total_area_per_eez[order(-total_area_per_eez$"Suitable Area (km2)"), ] # Order largest to smallest
+  ranked_eez$"Suitable Area (km2)" <- round(ranked_eez$"Suitable Area (km2)", 1) # Round up decimals
   
   # --- Create map of suitable EEZ regions --- #
   
@@ -179,7 +193,9 @@ map_species_suitability <- function(species_name,
     tm_layout(legend.outside = TRUE, legend.outside.position = "right")
   
  # Clean Environment After running Function
- rm(sst_rcl, depth_rcl, sst_bin, depth_bin, depth_stack, suitable_cells, eez_data, suitable_masked, eez_rast, cell_area, suitable_area_rast, total_area_per_eez, ranked_eez, land, eez_bbox, land_cropped)
+ rm(sst_rcl, depth_rcl, sst_bin, depth_bin, depth_stack, suitable_cells,
+    eez_data, suitable_masked, eez_rast, cell_area, suitable_area_rast,
+    total_area_per_eez, ranked_eez, land, eez_bbox, land_cropped)
  
   print(map)
   return(invisible(map))
