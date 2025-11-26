@@ -170,3 +170,84 @@ tm_layout(
   legend.outside.position = "right"
 )
 ```
+```{r}
+map_species_suitability <- function(species_name, 
+                                     sst_min, sst_max, 
+                                     depth_min, depth_max,
+                                     sst_data = mean_sst,
+                                     depth_data = depth_resampled,
+                                     eez_data = eez) {
+  
+  # Create reclassification matrices
+  sst_rcl <- matrix(c(
+    -Inf, sst_min, 0,
+    sst_min, sst_max, 1,
+    sst_max, Inf, 0
+  ), ncol = 3, byrow = TRUE)
+  
+  depth_rcl <- matrix(c(
+    -Inf, depth_min, 0,
+    depth_min, depth_max, 1,
+    depth_max, Inf, 0
+  ), ncol = 3, byrow = TRUE)
+  
+  # Reclassify to binary suitability
+  sst_bin <- classify(sst_data, rcl = sst_rcl)
+  depth_bin <- classify(depth_data, rcl = depth_rcl)
+  
+  # Replicate depth layer to match sst layers
+  depth_stack <- rep(depth_bin, nlyr(sst_bin))
+  
+  # Identify suitable cells
+  suitable_cells <- lapp(c(sst_bin, depth_stack), fun = function(sst, depth) {
+    sst * depth
+  })
+  
+  # Match CRS
+  eez_data <- st_transform(eez_data, crs(suitable_cells))
+  
+  # Mask to EEZ and rasterize
+  suitable_masked <- mask(suitable_cells, vect(eez_data))
+  eez_rast <- rasterize(vect(eez_data), suitable_masked[[1]], field = "rgn")
+  
+  # Calculate suitable area per EEZ
+  cell_area <- cellSize(suitable_masked, unit = "km")
+  suitable_area_rast <- suitable_masked * cell_area
+  total_area_per_eez <- zonal(suitable_area_rast, eez_rast, fun = "sum", na.rm = TRUE)
+  
+  colnames(total_area_per_eez) <- c("Region", "Suitable Area (km2)")
+  ranked_eez <- total_area_per_eez[order(-total_area_per_eez$"Suitable Area (km2)"), ]
+  ranked_eez$"Suitable Area (km2)" <- round(ranked_eez$"Suitable Area (km2)", 1)
+  
+  # Add suitable area to EEZ polygons
+  eez_data$"Suitable Area (km2)" <- setNames(ranked_eez$"Suitable Area (km2)", 
+                                              ranked_eez$Region)[eez_data$rgn]
+  
+  # Get land polygons cropped to EEZ extent with buffer
+  land <- ne_countries(scale = "medium", returnclass = "sf")
+  eez_bbox <- st_bbox(eez_data)
+  eez_bbox[c("xmin", "ymin")] <- eez_bbox[c("xmin", "ymin")] - 2
+  eez_bbox[c("xmax", "ymax")] <- eez_bbox[c("xmax", "ymax")] + 2
+  land_cropped <- st_crop(land, eez_bbox)
+  
+  # Create and display map
+  map <- tm_shape(land_cropped) +
+    tm_polygons(fill = "lightgray", col = "black", lwd = 1) +
+    tm_shape(eez_data) +
+    tm_polygons(fill = "Suitable Area (km2)", 
+                fill.scale = tm_scale_continuous(values = "brewer.yl_or_rd"),
+                fill.legend = tm_legend(title = "Suitable Area (km²)"),
+                col = "black",
+                lwd = 0.5) +
+    tm_title(text = paste("Suitable Habitat for", species_name)) +
+    tm_layout(legend.outside = TRUE, legend.outside.position = "right")
+  
+  print(map)
+  return(invisible(map))
+}
+
+# Example usage:
+ map_species_suitability("Oysters", sst_min = 11, sst_max = 30, depth_min = -70, depth_max = 0)
+
+```
+
