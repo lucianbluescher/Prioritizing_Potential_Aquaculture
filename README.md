@@ -41,3 +41,7 @@ EDS223-HW3
         └─── average_annual_sst_2011.tif
         └─── average_annual_sst_2012.tif
 ```
+
+## Acknowledgments
+This project was a homework assignment for the fall 2025 course, Geospatial Analysis & Remote Sensing (EDS 223). A part of the Master of Environmental Data Science (MEDS) program at UCSB's Bren school of Environmental Science & Management. The assigment was created by Ruth Oliver and administered by Annie Adams. This project was extremely enjoyable thanks to both of them. Additionally, the project was inspried by Rebecca R. Gentry's paper (*Mapping the global potential for marine aquaculture*)[https://www.nature.com/articles/s41559-017-0257-9] which mapped marine aquaculture potential and laid the groundwork for this assignment.
+
