@@ -3,8 +3,6 @@
 
 Image Credits: (Jane March, The Road Ahead for Sustainable Aquaculture)[https://earth.org/sustainable-aquaculture/]
 
-‌
-
 ### Lucian Scher |  11/26/25
 
 ## Purpose
