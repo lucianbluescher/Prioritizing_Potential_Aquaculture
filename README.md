@@ -1,4 +1,10 @@
 # Prioritizing Potential Aquaculture
+<img width="1024" height="683" alt="image" src="https://github.com/user-attachments/assets/133f8bb5-d1c9-4007-be73-185dfbc13eab" />
+
+Image Credits: (Jane March, The Road Ahead for Sustainable Aquaculture)[https://earth.org/sustainable-aquaculture/]
+
+‌
+
 ### Lucian Scher |  11/26/25
 
 ## Purpose
